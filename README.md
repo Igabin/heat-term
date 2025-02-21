@@ -404,3 +404,108 @@ legend({'FOM (Negative)', 'FOM (Positive)', 'FOM (Separator)', ...
         'Location', 'NorthEast');
 grid on;
 hold off;
+
+# modified qr
+clear; clc; close all;
+
+%% 1. 데이터 로드 및 전처리
+data = readmatrix('combined_voltage_current_data.xlsx');
+t_data = data(:,1);  % 시간 (s)
+I_data = data(:,2);  % 전류 (A)
+
+%% 2. 주요 파라미터 정의 (논문 기반)
+A = 1; % 전극 면적 (m^2)
+i_app = I_data / A; % 전류 밀도 (A/m^2)
+
+% 전극 및 분리막 두께 (m)
+L_neg = 128e-6; % 음극 (Anode) 두께
+L_sep = 76e-6;  % 분리막 (Separator) 두께
+L_pos = 190e-6; % 양극 (Cathode) 두께
+
+% 최대 농도 (mol/m^3)
+c_s_max_neg = 0.02639 * 1e6; % 음극 (mol/cm^3 -> mol/m^3 변환)
+c_s_max_pos = 0.02286 * 1e6; % 양극
+
+% 확산 계수 (m^2/s)
+D_s_neg = 3.9e-14; % 음극 고체상 확산 계수
+D_s_pos = 1.0e-13; % 양극 고체상 확산 계수
+D_e = 7.5e-7; % 전해질 확산 계수 (cm^2/s -> m^2/s)
+
+% 초기 전해질 농도 (mol/m^3)
+c_e0 = 1e3; % 논문 값 (mol/cm^3 -> mol/m^3 변환)
+
+% 전해질 이동도 및 전달 수 (dimensionless)
+t_plus = 0.363; % 이동도
+
+%% 3. 주요 상수 정의
+F = 96485; % Faraday 상수 (C/mol)
+T = 298; % 온도 (K)
+R = 8.314; % 기체 상수 (J/mol·K)
+
+%% 4. SOC 계산 (State of Charge)
+SOC = linspace(0, 1, length(t_data)); % SOC를 0~1 범위에서 선형적으로 가정
+
+%% 5. 논문 기반 dU/dT 계산
+
+% 음극 (Negative Electrode)
+theta = SOC;
+dUdT_neg = (344.1347148 .* exp(-32.9633287 .* theta + 8.316711484)) ./ ...
+           (1 + 749.0756003 .* exp(-34.79099664 .* theta + 8.887143624)) ...
+           - 0.8520278805 .* theta + 0.3629229929 .* theta.^2 + 0.2698001697;
+
+% 양극 (Positive Electrode)
+dUdT_pos = 4.31274309 .* exp(0.5715365236) - 4.14532933 ...
+           + 1.281681122 .* sin(-4.9916739 .* theta) ...
+           - 0.090453431 .* sin(-20.9669665 .* theta + 12.5788250) ...
+           - 0.0313472974 .* sin(31.7663338 .* theta - 22.4295664) ...
+           + 8.147113434 .* theta - 26.064581 .* theta.^2 + 12.76601588 .* theta.^3 ...
+           - 0.184274863 .* exp(-((theta - 0.5169435168) ./ 0.04628266783) .^ 2);
+
+%% 6. 반응 표면적 비율 (a_i) 계산
+brug = 1.5; % 브루그맨 계수
+
+% 공극률 (논문 제공 값)
+eps_e_neg = 0.357; % 음극 공극률
+eps_e_sep = 0.724; % 분리막 공극률
+eps_e_pos = 0.444; % 양극 공극률
+
+% 반응 표면적 비율 계산
+a_i_neg = (3 * eps_e_neg) / brug; % 음극 반응 표면적 비율
+a_i_pos = (3 * eps_e_pos) / brug; % 양극 반응 표면적 비율
+
+%% 7. 열린 회로 전압 온도 변화율 반영
+% 전류 밀도 계산
+i_app = I_data / A; % A/m^2
+
+% 가역적 열 생성 계산
+q_r_base_neg = (a_i_neg * F * T * i_app .* dUdT_neg); 
+q_r_base_pos = (a_i_pos * F * T * i_app .* dUdT_pos);
+
+% ROM1 및 ROM4 적용
+q_r_ROM1_pos = 0.95 * q_r_base_pos;
+q_r_ROM4_pos = 1.05 * q_r_base_pos;
+q_r_ROM1_neg = 0.95 * q_r_base_neg;
+q_r_ROM4_neg = 1.05 * q_r_base_neg;
+
+%% 8. 플로팅
+figure;
+hold on;
+
+% 음극 (Negative, Blue)
+plot(t_data, q_r_base_neg, 'b-', 'LineWidth', 2);
+plot(t_data, q_r_ROM1_neg, 'b--', 'LineWidth', 2);
+plot(t_data, q_r_ROM4_neg, 'b:', 'LineWidth', 2);
+
+% 양극 (Positive, Red)
+plot(t_data, q_r_base_pos, 'r-', 'LineWidth', 2);
+plot(t_data, q_r_ROM1_pos, 'r--', 'LineWidth', 2);
+plot(t_data, q_r_ROM4_pos, 'r:', 'LineWidth', 2);
+
+xlabel('Time (s)');
+ylabel('Heat (W)');
+title('Heat-generation term q_r(t) (Reversible Heat Generated via dUdT)');
+legend('FOM (Negative)', 'ROM1 (Negative)', 'ROM4 (Negative)', ...
+       'FOM (Positive)', 'ROM1 (Positive)', 'ROM4 (Positive)', ...
+       'Location', 'NorthEast');
+grid on;
+hold off;
