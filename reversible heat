@@ -119,3 +119,55 @@ function nu_val = nu_pos(k, params)
     
     nu_val = sqrt(nu_sq);
 end
+
+# neg_c_s,e
+function cse_neg = electrolyte_concentration_neg(z, k, i_app, params)
+    % z: spatial location (normalized, from 0 to 1)
+    % k: Laplace variable or frequency domain (e.g., 1j*omega)
+    % i_app: applied current (scalar or vector)
+    % params: struct containing all required parameters
+
+    % Unpack parameters
+    Rs = params.Rs_neg;  % Particle radius for negative electrode
+    Ds = params.Ds_neg;  % Diffusion coefficient for negative electrode
+    F = params.F;  % Faraday constant
+    A_eff = params.A_eff;  % Effective area
+    sigma_eff = params.sigma_neg * params.eps_s^params.brug;  % Effective conductivity
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;  % Effective conductivity in electrolyte
+
+    % Gamma and other constants
+    Gamma = Rs / (F * Ds);
+    
+    % Electrolyte concentration transfer function
+    term1 = Rs / (1 - Rs / Ds);
+    term2 = 1 / (1 - Rs * sqrt(Ds));
+    
+    % Compute electrolyte concentration
+    cse_neg = (i_app / A_eff) * term1 * term2 * z;
+end
+
+# pos_c_s,e
+function cse_pos = electrolyte_concentration_pos(z, k, i_app, params)
+    % z: spatial location (normalized, from 0 to 1)
+    % k: Laplace variable or frequency domain (e.g., 1j*omega)
+    % i_app: applied current (scalar or vector)
+    % params: struct containing all required parameters
+
+    % Unpack parameters
+    Rs = params.Rs_pos;  % Particle radius for positive electrode
+    Ds = params.Ds_pos;  % Diffusion coefficient for positive electrode
+    F = params.F;  % Faraday constant
+    A_eff = params.A_eff;  % Effective area
+    sigma_eff = params.sigma_pos * params.eps_s^params.brug;  % Effective conductivity
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;  % Effective conductivity in electrolyte
+
+    % Gamma and other constants
+    Gamma = Rs / (F * Ds);
+    
+    % Electrolyte concentration transfer function
+    term1 = Rs / (1 - Rs / Ds);
+    term2 = 1 / (1 - Rs * sqrt(Ds));
+    
+    % Compute electrolyte concentration
+    cse_pos = (i_app / A_eff) * term1 * term2 * z;
+end
