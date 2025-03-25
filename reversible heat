@@ -1,0 +1,121 @@
+# 파라미터 정의
+params.L = 128e-6;  % 음극 두께 (m)
+params.Rs_neg = 12.5e-6;  % 음극 입자 반지름 (m)
+params.Ds_neg = 3.9e-14;  % 음극 고체 확산 계수
+params.sigma_neg = 100;  % 음극 전도도 (S/m)
+params.eps_s = 0.357;  % 음극 고체 부피 비율
+params.eps_e = 0.471;  % 음극 전해질 부피 비율
+params.brug = 1.5;  % Bruggeman 계수
+params.F = 96485;  % 패러데이 상수 (C/mol)
+params.A_eff = 1;  % 전극 면적 (m^2)
+
+% 주파수나 Laplace 변수 (예: 1 rad/s)
+k = 1j;  
+
+% 위치 (음극 내부의 특정 위치)
+z = 0.5;  
+
+% 적용된 전류 (A)
+i_app = 10;  
+
+% 음극 반응 플럭스 계산
+j_neg = reaction_flux_neg(z, k, i_app, params);
+disp(j_neg);
+
+# neg_j
+function j_neg = reaction_flux_neg(z, k, i_app, params)
+    % z: spatial location (normalized, from 0 to 1)
+    % k: Laplace variable or frequency domain (e.g., 1j*omega)
+    % i_app: applied current (scalar or vector)
+    % params: struct containing all required parameters
+
+    % Unpack parameters
+    F = params.F;  % Faraday constant
+    Rs = params.Rs_neg;  % Particle radius
+    Ds = params.Ds_neg;  % Solid diffusion coefficient
+    sigma_eff = params.sigma_neg * params.eps_s^params.brug;  % Effective conductivity
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;  % Effective conductivity in electrolyte
+    A_eff = params.A_eff;  % Effective area (1 m^2 assumed)
+
+    % Gamma and nu calculations
+    Gamma = Rs / (F * Ds);
+    nu = nu_neg(k, params);  % nu function for negative electrode
+
+    % Terms in the flux expression
+    term1 = Gamma * coth(Gamma);
+    term2 = nu * cosh(nu * z) / cosh(nu);
+    term3 = (kappa_eff / sigma_eff) * sinh(nu * (z - 1)) / sinh(nu);
+
+    % Reaction flux calculation
+    j_neg = (i_app / A_eff) * term1 * (term2 + term3);
+end
+
+% nu_neg function (Negative Electrode)
+function nu_val = nu_neg(k, params)
+    % Calculate nu for negative electrode
+    a_s = 3 * params.eps_s / params.Rs_neg;
+    sigma_eff = params.sigma_neg * params.eps_s^params.brug;
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;
+
+    Gamma = params.Rs_neg / (params.F * params.Ds_neg);
+    
+    % Calculate dUocp_dc (derivative of open-circuit potential with respect to concentration)
+    dUocp_dc = params.dUocp_dc_neg(params.c_s0);  % Function for derivative of U_ocp
+    term_OCV = dUocp_dc;
+    
+    % nu calculation
+    num = a_s * params.F * params.L^2;
+    denom = sigma_eff * (1/kappa_eff + 1/sigma_eff);
+    nu_sq = num / denom * (Gamma + term_OCV);
+    
+    nu_val = sqrt(nu_sq);
+end
+
+# pos_j
+function j_pos = reaction_flux_pos(z, k, i_app, params)
+    % z: spatial location (normalized, from 0 to 1)
+    % k: Laplace variable or frequency domain (e.g., 1j*omega)
+    % i_app: applied current (scalar or vector)
+    % params: struct containing all required parameters
+
+    % Unpack parameters
+    F = params.F;  % Faraday constant
+    Rs = params.Rs_pos;  % Particle radius for positive electrode
+    Ds = params.Ds_pos;  % Solid diffusion coefficient for positive electrode
+    sigma_eff = params.sigma_pos * params.eps_s^params.brug;  % Effective conductivity
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;  % Effective conductivity in electrolyte
+    A_eff = params.A_eff;  % Effective area (1 m^2 assumed)
+
+    % Gamma and nu calculations
+    Gamma = Rs / (F * Ds);
+    nu = nu_pos(k, params);  % nu function for positive electrode
+
+    % Terms in the flux expression
+    term1 = Gamma * coth(Gamma);
+    term2 = nu * cosh(nu * z) / cosh(nu);
+    term3 = (kappa_eff / sigma_eff) * sinh(nu * (z - 1)) / sinh(nu);
+
+    % Reaction flux calculation
+    j_pos = (i_app / A_eff) * term1 * (term2 + term3);
+end
+
+% nu_pos function (Positive Electrode)
+function nu_val = nu_pos(k, params)
+    % Calculate nu for positive electrode
+    a_s = 3 * params.eps_s / params.Rs_pos;
+    sigma_eff = params.sigma_pos * params.eps_s^params.brug;
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;
+
+    Gamma = params.Rs_pos / (params.F * params.Ds_pos);
+    
+    % Calculate dUocp_dc (derivative of open-circuit potential with respect to concentration)
+    dUocp_dc = params.dUocp_dc_pos(params.c_s0);  % Function for derivative of U_ocp
+    term_OCV = dUocp_dc;
+    
+    % nu calculation
+    num = a_s * params.F * params.L^2;
+    denom = sigma_eff * (1/kappa_eff + 1/sigma_eff);
+    nu_sq = num / denom * (Gamma + term_OCV);
+    
+    nu_val = sqrt(nu_sq);
+end
