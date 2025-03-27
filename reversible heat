@@ -3,11 +3,21 @@ params.L = 128e-6;  % 음극 두께 (m)
 params.Rs_neg = 12.5e-6;  % 음극 입자 반지름 (m)
 params.Ds_neg = 3.9e-14;  % 음극 고체 확산 계수
 params.sigma_neg = 100;  % 음극 전도도 (S/m)
-params.eps_s = 0.357;  % 음극 고체 부피 비율
-params.eps_e = 0.471;  % 음극 전해질 부피 비율
+params.eps_s_neg = 0.357;  % 음극 고체 부피 비율
+params.eps_e_neg = 0.471;  % 음극 전해질 부피 비율
 params.brug = 1.5;  % Bruggeman 계수
 params.F = 96485;  % 패러데이 상수 (C/mol)
 params.A_eff = 1;  % 전극 면적 (m^2)
+
+params.L = 1.90e04; % 양극 두께 (m)
+params.Rs_pos = 8.50e-06; % 양극 입자 반지름 (m)
+params.Ds_pos = 1e-13; % 양극 고체 확산 계수
+params.sigma_pos = 3.8; % 양극 전도도 (S/m)
+params.eps_s_pos = 0.297; % 양극 고체 부피 비율
+params.eps_e_pos = 0.444; % 양극 전해질 부피 비율
+params.brug = 1.5; %Breggeman 계수
+params.F = 96485; % 패러데이 상수 (C/mol)
+params.A_eff = 1; % 전극 면적 (m^2)
 
 % 주파수나 Laplace 변수 (예: 1 rad/s)
 k = 1j;  
@@ -33,8 +43,8 @@ function j_neg = reaction_flux_neg(z, k, i_app, params)
     F = params.F;  % Faraday constant
     Rs = params.Rs_neg;  % Particle radius
     Ds = params.Ds_neg;  % Solid diffusion coefficient
-    sigma_eff = params.sigma_neg * params.eps_s^params.brug;  % Effective conductivity
-    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;  % Effective conductivity in electrolyte
+    sigma_eff = params.sigma_neg * params.eps_s_neg^params.brug;  % Effective conductivity
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e_neg^params.brug;  % Effective conductivity in electrolyte
     A_eff = params.A_eff;  % Effective area (1 m^2 assumed)
 
     % Gamma and nu calculations
@@ -53,9 +63,9 @@ end
 % nu_neg function (Negative Electrode)
 function nu_val = nu_neg(k, params)
     % Calculate nu for negative electrode
-    a_s = 3 * params.eps_s / params.Rs_neg;
-    sigma_eff = params.sigma_neg * params.eps_s^params.brug;
-    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;
+    a_s = 3 * params.eps_s_neg / params.Rs_neg;
+    sigma_eff = params.sigma_neg * params.eps_s_neg^params.brug;
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e_neg^params.brug;
 
     Gamma = params.Rs_neg / (params.F * params.Ds_neg);
     
@@ -82,8 +92,8 @@ function j_pos = reaction_flux_pos(z, k, i_app, params)
     F = params.F;  % Faraday constant
     Rs = params.Rs_pos;  % Particle radius for positive electrode
     Ds = params.Ds_pos;  % Solid diffusion coefficient for positive electrode
-    sigma_eff = params.sigma_pos * params.eps_s^params.brug;  % Effective conductivity
-    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;  % Effective conductivity in electrolyte
+    sigma_eff = params.sigma_pos * params.eps_s_pos^params.brug;  % Effective conductivity
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e_pos^params.brug;  % Effective conductivity in electrolyte
     A_eff = params.A_eff;  % Effective area (1 m^2 assumed)
 
     % Gamma and nu calculations
@@ -102,9 +112,9 @@ end
 % nu_pos function (Positive Electrode)
 function nu_val = nu_pos(k, params)
     % Calculate nu for positive electrode
-    a_s = 3 * params.eps_s / params.Rs_pos;
-    sigma_eff = params.sigma_pos * params.eps_s^params.brug;
-    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;
+    a_s = 3 * params.eps_s_pos / params.Rs_pos;
+    sigma_eff = params.sigma_pos * params.eps_s_pos^params.brug;
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e_pos^params.brug;
 
     Gamma = params.Rs_pos / (params.F * params.Ds_pos);
     
@@ -132,8 +142,8 @@ function cse_neg = electrolyte_concentration_neg(z, k, i_app, params)
     Ds = params.Ds_neg;  % Diffusion coefficient for negative electrode
     F = params.F;  % Faraday constant
     A_eff = params.A_eff;  % Effective area
-    sigma_eff = params.sigma_neg * params.eps_s^params.brug;  % Effective conductivity
-    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;  % Effective conductivity in electrolyte
+    sigma_eff = params.sigma_neg * params.eps_s_neg^params.brug;  % Effective conductivity
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e_neg^params.brug;  % Effective conductivity in electrolyte
 
     % Gamma and other constants
     Gamma = Rs / (F * Ds);
@@ -158,8 +168,8 @@ function cse_pos = electrolyte_concentration_pos(z, k, i_app, params)
     Ds = params.Ds_pos;  % Diffusion coefficient for positive electrode
     F = params.F;  % Faraday constant
     A_eff = params.A_eff;  % Effective area
-    sigma_eff = params.sigma_pos * params.eps_s^params.brug;  % Effective conductivity
-    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e^params.brug;  % Effective conductivity in electrolyte
+    sigma_eff = params.sigma_pos * params.eps_s_pos^params.brug;  % Effective conductivity
+    kappa_eff = params.kappa_e(params.c_e0) * params.eps_e_pos^params.brug;  % Effective conductivity in electrolyte
 
     % Gamma and other constants
     Gamma = Rs / (F * Ds);
