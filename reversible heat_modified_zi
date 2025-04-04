@@ -1,0 +1,171 @@
+%% 전극 위치 (zi) 설정: 0, 0.25, 0.5, 0.75, 1
+zi = 0:0.25:1;  % 전극의 위치 (5개 구간)
+delta_z = zi(2) - zi(1);  % 각 구간의 길이 (0.25)
+
+%% 전극 및 파라미터 설정
+Tref = 298.15;  % 기준 온도 (K)
+R = 8.314;      % 기체 상수 (J/mol·K)
+F = 96485;      % 패러데이 상수 (C/mol)
+
+% 표면적 계산 (a_s = 3 * eps_e / r_s)
+a_s_neg = 3 * 0.357 / 1.25e-5;  % 음극 표면적 (m^-1)
+a_s_pos = 3 * 0.444 / 8.50e-6;  % 양극 표면적 (m^-1)
+
+c_s_max_neg = 26390;
+c_s_max_pos = 22860;
+
+duocp_dT_neg = @(x) -20000*exp(-2000*x) - 3.96*exp(-3*x);
+duocp_dT_pos = @(x) ...
+    -32.4096 .* exp(-40 .* (x - 0.133875)) ...
+    - 0.0135664 ./ ((0.998432 - x).^1.49247) ...
+    + 0.0595559 .* exp(-0.04738 .* x.^8) .* x.^7 ...
+    - 0.823297 .* (sech(8.60942 - 14.5546 .* x)).^2;
+
+sech = @(x) 1 ./ cosh(x);  % 하이퍼볼릭 시컨트 함수 정의
+
+%% 전류 밀도 및 농도 (ROM과 FOM)
+j_neg_ROM = ROM.j_neg;  % 음극 전류 밀도 (A/m^2) 
+j_pos_ROM = ROM.j_pos;  % 양극 전류 밀도 (A/m^2) 
+j_neg_FOM = FOM.j_neg;  % 음극 전류 밀도 (A/m^2) 
+j_pos_FOM = FOM.j_pos;  % 양극 전류 밀도 (A/m^2) 
+
+cse_neg_ROM = ROM.cse_neg;  % 음극 농도 (mol/m^3) 
+cse_pos_ROM = ROM.cse_pos;  % 양극 농도 (mol/m^3) 
+cse_neg_FOM = FOM.cse_neg;  % 음극 농도 (mol/m^3) 
+cse_pos_FOM = FOM.cse_pos;  % 양극 농도 (mol/m^3) 
+
+
+%% ROM1 모델 계산 (사다리꼴 적분을 통한 ROM1 계산)
+%% ROM1 모델 계산 (사다리꼴 적분을 통한 ROM1 계산)
+num_timesteps = size(cse_neg_ROM, 2);
+
+for k = 1:num_timesteps
+    sum_neg = 0;
+    sum_pos = 0;
+
+    for i = 1:length(zi)
+        % SOC 계산
+        soc_neg = cse_neg_ROM(i, k) / c_s_max_neg;
+        soc_pos = cse_pos_ROM(i, k) / c_s_max_pos;
+
+        % dUocp/dT 계산
+        dU_dT_zn = duocp_dT_neg(soc_neg);
+        dU_dT_zp = duocp_dT_pos(soc_pos);
+
+        % 전류 밀도
+        j_zn = j_neg_ROM(i, k);
+        j_zp = j_pos_ROM(i, k);
+
+        % 누적 적분
+        sum_neg = sum_neg + j_zn * dU_dT_zn * delta_z;
+        sum_pos = sum_pos + j_zp * dU_dT_zp * delta_z;
+    end
+
+    % 최종 열 생성량
+    q_r_rom1_neg(k) = a_s_neg * F * Tref * sum_neg;
+    q_r_rom1_pos(k) = a_s_pos * F * Tref * sum_pos;
+end
+
+
+j_neg_ROM = ROM.j_neg;  % 음극 전류 밀도 (A/m^2)
+j_pos_ROM = ROM.j_pos;  % 양극 전류 밀도 (A/m^2)
+cse_neg_ROM = ROM.cse_neg;  % 음극 농도 (mol/m^3)
+cse_pos_ROM = ROM.cse_pos;  % 양극 농도 (mol/m^3)
+
+%% ROM4 모델 계산
+% c_avg[k] 계산 (음극과 양극 농도의 평균)
+c_avg_neg_ROM = mean(cse_neg_ROM, 2);  % 음극의 농도 평균
+c_avg_pos_ROM = mean(cse_pos_ROM, 2);  % 양극의 농도 평균
+c_s_max_neg_ROM = max(cse_neg_ROM, [], 2);  % 음극의 최대 농도 (각 z에 대한)
+c_s_max_pos_ROM = max(cse_pos_ROM, [], 2);  % 양극의 최대 농도 (각 z에 대한)
+
+% SOC 계산 (농도 기준으로 SOC 계산)
+soc_neg = c_avg_neg_ROM / c_s_max_neg_ROM;  % 음극 SOC
+soc_pos = c_avg_pos_ROM / c_s_max_pos_ROM;  % 양극 SOC
+
+% duocp_dT 계산 (SOC에 따른 미분값 계산)
+dU_dT_neg = duocp_dT_neg(soc_neg);  % 음극 OCP 미분값 (온도에 대한)
+dU_dT_pos = duocp_dT_pos(soc_pos);  % 양극 OCP 미분값 (온도에 대한)
+
+% 사다리꼴 적분을 통한 q_r 계산 (음극과 양극)
+q_r_neg = 0;  % 음극 열 생성량 초기화
+q_r_pos = 0;  % 양극 열 생성량 초기화
+
+for i = 1:length(zi) - 1
+    % 음극과 양극에 대한 열 생성량 계산
+    q_r_neg = a_s_neg * F * Tref * dU_dT_neg * sum(j_neg_ROM(i)) * delta_z;
+    q_r_pos = a_s_pos * F * Tref * dU_dT_pos * sum(j_pos_ROM(i)) * delta_z;
+end
+
+
+%% FOM
+zi = [0, 0.25, 0.5, 0.75, 1];  % zi 값 (구간을 나누어 설정)
+
+% 사다리꼴 적분을 통한 열 생성량 계산
+q_r_fom1_neg = 0;  % 음극 열 생성량 초기화
+q_r_fom1_pos = 0;  % 양극 열 생성량 초기화
+
+% 각 zi에 대해 반복
+for i = 1:length(zi)  % zi 값에 대해 반복
+    % 음극 전류 밀도 j_neg (배열에서 해당 zi에 대한 값 추출)
+    j_neg_value = j_neg_FOM(i);  % 음극 전류 밀도 (각 zi에 대한 값)
+    
+    % 음극 농도 cse_neg (배열에서 해당 zi에 대한 값 추출)
+    cse_neg_value = cse_neg_FOM(i);  % 음극 농도 (각 zi에 대한 값)
+    
+    % 양극 전류 밀도 j_pos (배열에서 해당 zi에 대한 값 추출)
+    j_pos_value = j_pos_FOM(i);  % 양극 전류 밀도 (각 zi에 대한 값)
+    
+    % 양극 농도 cse_pos (배열에서 해당 zi에 대한 값 추출)
+    cse_pos_value = cse_pos_FOM(i);  % 양극 농도 (각 zi에 대한 값)
+    
+    soc_neg = cse_neg_value / c_s_max_neg;  % 음극 SOC
+    soc_pos = cse_pos_value / c_s_max_pos;  % 양극 SOC
+
+    dU_dT_neg = duocp_dT_neg(soc_neg);  % 음극 OCP 미분값 (온도에 대한)
+    dU_dT_pos = duocp_dT_pos(soc_pos);  % 양극 OCP 미분값 (온도에 대한)
+
+    
+   q_r_rom1_neg = q_r_rom1_neg + a_s_neg * F * Tref * j_neg_value * dU_dT_neg * cse_neg_value;
+   q_r_rom1_pos = q_r_rom1_pos + a_s_pos * F * Tref * j_pos_value * dU_dT_pos * cse_pos_value;
+
+end
+
+
+% 그래프 그리기
+figure;
+
+hold on;
+
+% FOM 음극 (실선, 파란색)
+plot(q_r_fom_neg, 'b-', 'LineWidth', 2); 
+
+% FOM 양극 (실선, 빨간색)
+plot(q_r_fom_pos, 'r-', 'LineWidth', 2);  
+
+% ROM1 음극 (점선, 파란색)
+plot(q_r_rom1_neg, 'b--', 'LineWidth', 2);  
+
+% ROM1 양극 (점선, 빨간색)
+plot(q_r_rom1_pos, 'r--', 'LineWidth', 2);  
+
+% ROM4 음극 (점으로, 파란색)
+plot(q_r_rom4_neg, 'b:', 'LineWidth', 2);  
+
+% ROM4 양극 (점으로, 빨간색)
+plot(q_r_rom4_pos, 'r:', 'LineWidth', 2);  
+
+% X축 및 Y축 레이블 설정
+xlabel('Time (s)');  % X축 레이블 (시간)
+ylabel('Heat (W)');  % Y축 레이블 (열 생성량)
+title('Reversible Heat');  % 제목
+
+% 자동으로 범례 설정
+legend('FOM neg', 'FOM pos', 'ROM1 neg', 'ROM1 pos', 'ROM4 neg', 'ROM4 pos', 'Location', 'best');
+
+% 그리드 추가
+grid on;  
+hold off;
+
+
+
