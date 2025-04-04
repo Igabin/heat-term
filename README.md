@@ -13,3 +13,6 @@
 <img src="https://github.com/Igabin/heat-term/blob/main/untitled2.png" width="400" height="300">
 
 **SOC 변화율을 반영, d pulse와 c pulse 변수 사용**
+
+---
+<img 
