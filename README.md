@@ -15,7 +15,7 @@
 **SOC 변화율을 반영, d pulse와 c pulse 변수 사용**
 
 ---
-<img src="https://github.com/Igabin/heat-term/blob/main/reversible_heat_three.fig" width="400" height="300">
+<img src="https://github.com/Igabin/heat-term/blob/main/reversible_heat_three.png" width="400" height="300">
 
 
 **각 zi에 대해 반복 설정**
