@@ -1,0 +1,105 @@
+%% 상수 및 설정
+Tref = 298.15;
+F = 96485;
+R = 8.314;
+
+% 전극 두께 (from parameter sheet)
+L_neg = 1.28e-4;     % [m]
+L_pos = 1.90e-4;     % [m]
+
+% 셀 면적 (typical pouch cell, 100 cm²)
+A_cell = 1e-2;       % [m²]
+
+% 전극 부피
+V_neg = L_neg * A_cell;  % [m³]
+V_pos = L_pos * A_cell;
+
+% 비표면적 a_s = 3*eps_s / Rs
+a_s_neg = 3 * 0.357 / 1.25e-6;  % [1/m]
+a_s_pos = 3 * 0.297 / 8.5e-6;
+
+% 최대 농도
+c_s_max_neg = 26390;  % [mol/m³]
+c_s_max_pos = 22860;
+
+% 하이퍼볼릭 시컨트
+sech = @(x) 1 ./ cosh(x);
+
+% dUocp/dT 정의
+duocp_dT_neg = @(x) -20000 * exp(-2000 * x) - 3.96 * exp(-3 * x);
+duocp_dT_pos = @(x) ...
+    -32.4096 .* exp(-40 .* (x - 0.133875)) ...
+    - 0.0135664 ./ ((0.998432 - x).^1.49247) ...
+    + 0.0595559 .* exp(-0.04738 .* x.^8) .* x.^7 ...
+    - 0.823297 .* (sech(8.60942 - 14.5546 .* x)).^2;
+
+%% 시간 설정
+time = FOM_c.time;
+num_timesteps = length(time);
+
+% 결과 저장
+q_r_fom_neg = zeros(1, num_timesteps);
+q_r_fom_pos = zeros(1, num_timesteps);
+q_r_rom1_neg = zeros(1, num_timesteps);
+q_r_rom1_pos = zeros(1, num_timesteps);
+q_r_rom4_neg = zeros(1, num_timesteps);
+q_r_rom4_pos = zeros(1, num_timesteps);
+
+% 공간 구간 (z 위치)
+zi = [0, 1];
+delta_z = 1.0;
+
+%% 시간 루프
+for k = 1:num_timesteps
+    % --------- FOM ---------
+    sum_fom_neg = 0; sum_fom_pos = 0;
+    for i = 1:2
+        soc_neg = FOM_c.cse_neg(k,i) / c_s_max_neg;
+        soc_pos = FOM_c.cse_pos(k,i) / c_s_max_pos;
+        dU_dT_neg = duocp_dT_neg(soc_neg);
+        dU_dT_pos = duocp_dT_pos(soc_pos);
+        sum_fom_neg = sum_fom_neg + FOM_c.j_neg(k,i) * dU_dT_neg * delta_z;
+        sum_fom_pos = sum_fom_pos + FOM_c.j_pos(k,i) * dU_dT_pos * delta_z;
+    end
+    q_r_fom_neg(k) = -a_s_neg * F * Tref * sum_fom_neg * V_neg;  % 부호 반전 + 부피곱
+    q_r_fom_pos(k) =  a_s_pos * F * Tref * sum_fom_pos * V_pos;
+
+    % --------- ROM1 ---------
+    sum_rom1_neg = 0; sum_rom1_pos = 0;
+    for i = 1:2
+        soc_neg = ROM_c.cse_neg(k,i) / c_s_max_neg;
+        soc_pos = ROM_c.cse_pos(k,i) / c_s_max_pos;
+        dU_dT_neg = duocp_dT_neg(soc_neg);
+        dU_dT_pos = duocp_dT_pos(soc_pos);
+        sum_rom1_neg = sum_rom1_neg + ROM_c.j_neg(k,i) * dU_dT_neg * delta_z;
+        sum_rom1_pos = sum_rom1_pos + ROM_c.j_pos(k,i) * dU_dT_pos * delta_z;
+    end
+    q_r_rom1_neg(k) = -a_s_neg * F * Tref * sum_rom1_neg * V_neg;  % 부호 반전
+    q_r_rom1_pos(k) =  a_s_pos * F * Tref * sum_rom1_pos * V_pos;
+
+    % --------- ROM4 ---------
+    c_avg_neg = mean(ROM_c.cse_neg(k, :));
+    c_avg_pos = mean(ROM_c.cse_pos(k, :));
+    soc_avg_neg = c_avg_neg / c_s_max_neg;
+    soc_avg_pos = c_avg_pos / c_s_max_pos;
+    dU_dT_avg_neg = duocp_dT_neg(soc_avg_neg);
+    dU_dT_avg_pos = duocp_dT_pos(soc_avg_pos);
+    j_total_neg = sum(ROM_c.j_neg(k, :)) * delta_z;
+    j_total_pos = sum(ROM_c.j_pos(k, :)) * delta_z;
+    q_r_rom4_neg(k) = -a_s_neg * F * Tref * dU_dT_avg_neg * j_total_neg * V_neg;
+    q_r_rom4_pos(k) =  a_s_pos * F * Tref * dU_dT_avg_pos * j_total_pos * V_pos;
+end
+
+%% 그래프 출력
+figure; hold on;
+plot(time, q_r_fom_neg, 'b-', 'LineWidth', 2);
+plot(time, q_r_fom_pos, 'r-', 'LineWidth', 2);
+plot(time, q_r_rom1_neg, 'b--', 'LineWidth', 2);
+plot(time, q_r_rom1_pos, 'r--', 'LineWidth', 2);
+plot(time, q_r_rom4_neg, 'b:', 'LineWidth', 2);
+plot(time, q_r_rom4_pos, 'r:', 'LineWidth', 2);
+xlabel('Time (s)');
+ylabel('Heat (W)');
+title('Reversible Heat');
+legend('FOM neg', 'FOM pos', 'ROM1 neg', 'ROM1 pos', 'ROM4 neg', 'ROM4 pos', 'Location', 'best');
+grid on;
