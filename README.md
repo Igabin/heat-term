@@ -19,3 +19,5 @@
 
 
 **각 zi에 대해 반복 설정**
+---
+<img src="https://github.com/Igabin/heat-term/blob/main/untitled1.png" width="400" height="300">
