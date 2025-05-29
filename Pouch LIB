@@ -1,0 +1,107 @@
+# 필요한 패키지 import
+import pandas as pd
+import numpy as np
+import pybamm
+import matplotlib.pyplot as plt
+
+# 1. 데이터 불러오기 및 1사이클만 사용
+
+df = pd.read_excel("voltage(7th).xlsx", sheet_name="record", header=0)
+df_1cycle = df.iloc[:542, :].copy()  # 1사이클만 선택
+
+temp_df = pd.read_csv("TC_250428_cell1_notapping2.csv")  # 온도 파일 불러오기
+
+# 2. 시간 및 데이터 추출 (1사이클 기준)
+
+time_col = "Total Time"
+current_col = "Current(A)"
+soc_col = "SOC/DOD(%)"
+voltage_col = "Voltage(V)"
+
+times_str = df_1cycle[time_col].astype(str)
+currents = df_1cycle[current_col].values
+soc = df_1cycle[soc_col].values
+voltages = df_1cycle[voltage_col].values
+
+# 시간 문자열을 초 단위로 변환 함수
+def time_to_seconds(t_str):
+    h, m, s = map(int, t_str.split(":"))
+    return h*3600 + m*60 + s
+
+times = times_str.apply(time_to_seconds).values
+times = times - times[0]  # 0초 기준 맞추기
+
+# 온도 데이터도 시간, 온도값 추출 및 켈빈 변환
+time_temp_col = "Time"
+temp_col = "Dev2_AI1"
+
+temp_times = temp_df[time_temp_col].values
+temps_c = temp_df[temp_col].values
+temps_k = temps_c + 273.15  # 섭씨->켈빈
+
+# 3. 시간 오름차순 정렬, 중복 제거 및 맞추기
+
+def clean_time_series(times, *arrays):
+    valid_mask = ~np.isnan(times)
+    for arr in arrays:
+        valid_mask &= ~np.isnan(arr)
+    times = times[valid_mask]
+    arrays = [arr[valid_mask] for arr in arrays]
+
+    sort_idx = np.argsort(times)
+    times = times[sort_idx]
+    arrays = [arr[sort_idx] for arr in arrays]
+
+    times_unique, unique_idx = np.unique(times, return_index=True)
+    arrays_unique = [arr[unique_idx] for arr in arrays]
+
+    return (times_unique, *arrays_unique)
+
+times, currents, soc, voltages = clean_time_series(times, currents, soc, voltages)
+temp_times, temps_k = clean_time_series(temp_times, temps_k)
+
+# 4. pybamm Interpolant 생성 (전류)
+
+current_fun = pybamm.Interpolant(times, currents, pybamm.t, name="Current [A]")
+
+# 5. ParameterValues 객체 생성 및 업데이트
+
+param = pybamm.ParameterValues("Chen2020")
+
+mean_temp_k = np.mean(temps_k)
+param.update({"Initial temperature [K]": mean_temp_k}, check_already_exists=False)
+
+param.update({"Current function [A]": current_fun}, check_already_exists=False)
+
+# 6. 모델 생성 및 시뮬레이션 실행
+
+model = pybamm.lithium_ion.DFN()
+sim = pybamm.Simulation(model, parameter_values=param)
+solution = sim.solve()
+
+sim.plot()
+
+# 7. 기본 데이터 플롯 (전류, SOC, 온도)
+
+plt.figure(figsize=(10, 8))
+
+plt.subplot(3,1,1)
+plt.plot(times, currents, label="Current [A]")
+plt.legend()
+plt.xlabel("Time [s]")
+plt.ylabel("Current [A]")
+
+plt.subplot(3,1,2)
+plt.plot(times, soc, label="SOC/DOD [%]", color="green")
+plt.legend()
+plt.xlabel("Time [s]")
+plt.ylabel("SOC/DOD [%]")
+
+plt.subplot(3,1,3)
+plt.plot(temp_times, temps_k, label="Temperature [K]", color="red")
+plt.legend()
+plt.xlabel("Time [s]")
+plt.ylabel("Temperature [K]")
+
+plt.tight_layout()
+plt.show()
